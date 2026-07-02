@@ -148,7 +148,7 @@ Upon launching, the client console reports execution stats and success rate prog
 <p align="center">
   <img src="images/result1.png" alt="Submission run success rate evidence" width="90%">
   <br>
-  <em>Figure 2: Success rate evidence showing 12.5% completion over 1,000 attempts under high proxy rotation.</em>
+  <em>Figure 2: Success rate evidence showing 51.3% completion (513 successful submissions out of 1,000 attempts) under high proxy rotation.</em>
 </p>
 
 <p align="center">
@@ -156,6 +156,9 @@ Upon launching, the client console reports execution stats and success rate prog
   <br>
   <em>Figure 3: Success rate evidence showing 13.9% completion stats and throughput metrics.</em>
 </p>
+
+> [!NOTE]
+> * Low Success Rates / Dead Proxies: If the tool reports a high failure rate (e.g., 95%+ failed), it is almost always due to dead, offline, or extremely slow proxies in proxy list.
 
 ---
 
@@ -285,6 +288,7 @@ socks4://98.76.54.32:1080
 | `--times N` | Total number of responses to submit. |
 | `--concurrency N` | Maximum number of concurrent connections (default: `25`). |
 | `--proxies FILE` | Path to a text file containing proxies (one per line). |
+| `--max-retries N` | Maximum number of proxy retry attempts per submission (default: `5`). |
 | `--refresh-meta` | Forces refreshing metadata (`fbzx`, `pageHistory`) from the live form. |
 | `--dump-html FILE` | Dumps the parsed form HTML to a file (useful for debugging). |
 
@@ -293,6 +297,9 @@ socks4://98.76.54.32:1080
 ## ⚠️ reCAPTCHA Bypass
 
 If the google form has reCAPTCHA verification triggered, submissions might trigger bot defenses. To resolve this:
+
+> [!NOTE]
+> * **reCAPTCHA & Bot Protection**: Completing the reCAPTCHA challenge does not guarantee that the script will work afterward. The verification URL may expire, become invalid, or be rejected due to session changes, rate limits, or other server-side protections. If the script continues to redirect you to a CAPTCHA or fails after verification, repeat the verification process or generate a new verification URL or wait for a while until the restriction is lifted.
 
 <p align="center">
   <img src="images/captcha.png" alt="reCAPTCHA verification challenge" width="55%">
