@@ -1,214 +1,312 @@
-# Google Forms Spammer
+<h1 align="center">Google Forms Spammer</h1>
 
-Pretty fast multi-threaded, command-line driven google form spammer.
+<p align="center">
+  <a href="https://www.python.org/">
+    <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg?style=for-the-badge&logo=python&logoColor=white" alt="Python Version">
+  </a>
+  <a href="https://opensource.org/licenses/MIT">
+    <img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License: MIT">
+  </a>
+  <a href="https://docs.python.org/3/library/asyncio.html">
+    <img src="https://img.shields.io/badge/Engine-Asyncio%20%2F%20Aiohttp-orange.svg?style=for-the-badge&logo=python&logoColor=white" alt="Asynchronous Engine">
+  </a>
+  <a href="https://github.com/anonymouschichvy/Google-Forms-Spammer">
+    <img src="https://img.shields.io/badge/Scraper-FB__PUBLIC__LOAD__DATA-blueviolet.svg?style=for-the-badge" alt="Scraper Type">
+  </a>
+</p>
 
-### Features
-- Choose which option to spam (MCQ and Checkbox)
-- Choose what answer to spam (Short and Long Answer Questions)
-- Choose how many times to spam
-- Bypasses [xFanatical's Anti-Spamming for Google Forms](https://xfanatical.com/blog/captcha-for-forms/)
-- Multi-threaded, meaning that responses can be sent relatively quickily
-- 85%-90% of requests pass through
+A high-performance, asynchronous, CLI-driven Google Forms mass-submission tool. By utilizing direct JSON configuration scraping (`FB_PUBLIC_LOAD_DATA_`) and metadata token mapping, this tool bypasses heavy browser automation (such as Selenium or Playwright) to execute concurrent HTTP submissions at extreme speeds.
 
-### Quickstart
-- Download the windows executable through the [releases](https://github.com/UnidentifiedX/Google-Forms-Spammer/releases) tab. Or, you can download the source code and run it through the python command line
-- Follow the step-by-step instructions that will guide you through the whole process
-- No coding experience required!
+---
 
-### Limitations
-- Cannot answer Google Forms that collect emails
-- If the xFanatical CAPTCHA time runs out, you have to re-key everything (this may be patched in the future)
-- Cannot answer forms with multiple pages
-- Currently cannot answer forms with `<span>`s that are not questions (including images)
-- **Important: Please enter the long version of the form link, i.e. it starts with `https://docs.google.com/forms` rather than `https://forms.gle`**
+## 🛠️ How It Works (Under the Hood)
 
-**Also very important: Use at your own risk. I do not encourage nor endorse any kind of activity that is illegal, causes harm to others, or is morally wrong.**
+The engine fetches, parses, maps, and fires requests efficiently using the following lifecycle:
 
-![Image of Google Forms Spamming in action](./images/responses.png) 
-
-What happens after 5000 responses
-
-### TODO
-- Add a proxy so we won't get 429 responses in large-volume request environments like schools
-- Basically reduce all the limitations
-
-## How this works
-
-### Getting the questions
-First, we start by creating a `driver` to load the Google Form. This allows JavaScript-reliant parts of HTML to be loaded for scraping.
-
-We then use [BeautifulSoup](https://www.crummy.com/software/BeautifulSoup/bs4/doc/) to help us parse the html to allow us to search by html tags, attibutes and class names.
-
-```py
-driver = webdriver.Chrome(ChromeDriverManager().install())
-response = driver.get(url)  
-
-src = driver.page_source
-soup = BeautifulSoup(src, 'html.parser')
-driver.quit()
+```mermaid
+graph TD
+    A[Start: Provide Google Form URL] --> B{Check URL Type}
+    B -->|forms.gle| C[Resolve redirect to viewform]
+    B -->|docs.google.com| D[Direct URL]
+    C --> E[Fetch HTML Page via GET]
+    D --> E
+    E -->|If Direct fails| F[Fallback: Retry using random HTTP Proxy]
+    E --> G[Parse HTML using regex & JSON parser]
+    F --> G
+    G --> H[Extract Questions & Meta: fbzx, pageHistory]
+    H --> I{Execution Path}
+    I -->|--load profile.json| J[Load saved answers & merge with fresh meta]
+    I -->|Interactive| K[Prompt user question-by-question]
+    K -->|--save profile.json| L[Write to JSON & Exit]
+    K --> M[Set submission count & concurrency]
+    J --> M
+    M --> N[Initialize asyncio Event Loop]
+    N --> O[Spawn concurrent aiohttp workers]
+    O --> P{Submit Response}
+    P -->|Pool Answer| Q[Select random answer from pool]
+    P -->|Static Answer| R[Encode payload with sentinel & meta fields]
+    Q --> S[Send POST requests]
+    R --> S
+    S --> T[tqdm progress bar updates]
+    T --> U[Done: Display speed & success rates]
 ```
 
-Now, we start to identify questions by identifying which tags mark a question. We start to realise that the
+---
 
-```html
-<div class="" role="listitem">
+## ✨ Features & Capabilities
 
-</div>
+- **⚡ Blazing Fast Engine**: Scraping is done instantly by extracting fields, choices, and internal validations directly from the Google Forms inline Javascript array (`FB_PUBLIC_LOAD_DATA_`).
+- **🌪️ Asynchronous Concurrency**: Built with `asyncio` and `aiohttp` to dispatch hundreds of submissions concurrently with rate limits handled via connection pools.
+- **💾 Profile Management**: Build a questionnaire response profile once, save it to a local JSON file (`profile.json`), and reload it for automated execution.
+- **🎲 Dynamic Answer Pools**: Customize response variations using the `pool:option1|option2` syntax to rotate inputs and make submissions look organic.
+- **📋 Wide Compatibility**: Supports multiple input structures:
+  - Short Answer / Paragraph text
+  - Multiple Choice & Dropdowns
+  - Checkboxes (Multi-select)
+  - Linear Scales & Star Ratings
+  - Dates (`YYYY-MM-DD`) and Times (`HH:MM`)
+- **🛡️ Security token mapping**: Automatically extracts and submits crucial security tokens (`fbzx`, `pageHistory`, `partialResponse`) to bypass basic anti-bot headers.
+- **🌐 Proxy Failover & Rotation**: Supports SOCKS4, SOCKS5, HTTP, and HTTPS proxies with automatic redirection/scraping failover.
+- **🚪 Graceful Interruption**: Catches `Ctrl+C` cleanly, letting active workers finish their current request before summarizing stats.
+
+---
+
+## 📦 Setup & Installation
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/anonymouschichvy/Google-Forms-Spammer.git
+cd Google-Forms-Spammer
 ```
 
-tags denote the start of a question. However, there is a special case where `role="listitem"` also appears in checkbox questions. Hence, we have to filter them out by using an actual question's properties: it only has two attribues in the `<div>` tag, rather than a checkbox's five.
-
-```py
-questions = soup.find_all(lambda div: div.name == "div" and len(div.attrs) == 2, {"role": "listitem"})
+### 2. Install Dependencies
+Install python dependencies (compatible with Python 3.10+):
+```bash
+pip install -r requirements.txt
 ```
 
-We then loop through each question. We first create a local `_soup` that parses that question's HTML. The question positions are located by finding the first `<span>` tag within the question, and is always there regardless of the question type.
+> [!NOTE]
+> If you plan to use SOCKS4 or SOCKS5 proxies, make sure to install `aiohttp-socks` by running:
+> ```bash
+> pip install aiohttp-socks
+> ```
 
-First, we initialize the different properties of a question.
+---
 
-```py
-for id in questions:
-    _question = _soup.find("span", {}).contents[0]
-    _required = False
-    _options = []
-    _id = None
-    _type = None
+## 📖 Usage Guide
 
-    # Other code goes here
+The tool supports three main modes of execution:
+
+### Mode A: Fully Interactive
+Guides you through each form question, allowing you to enter static answers or define dynamic pools, then prompts for the number of submissions and concurrency.
+```bash
+python main.py
 ```
 
-Unfortunately, there is no straightforward way to tell the question type (that I know of). Hence, we have to run a try-catch (try-except) statement. The point is that due to different question types having different data structures, we will encounter an error when trying to find a HTML tag or attribute that is not there. Hence, we will fall to the `except` clause. I will explain every question type below.
+<p align="center">
+  <img src="images/result2.png" alt="Google Forms Spammer CLI" width="90%">
+  <br>
+  <em>Figure 1: Example command execution showing argument parsing and interactive prompting.</em>
+</p>
 
-**MCQ Questions**
+---
 
-The first `<input>` tag has an attribute `name` that contains the id of the question, with `"_sentinel"` added behind the id (I don't know the reason. Please enlighten me.). Then, to figure out whether a question is required, we find a `<span>` that has the `aria-label="Required question"`. Whether if it can be found is whether the question is required. To distunguish between an MCQ and a Checkbox question can be summarised in the table below:
+### Mode B: Automating with Saved Profiles
+1. **Create and save a response profile** (without running submissions):
+   ```bash
+   python main.py --url "https://docs.google.com/forms/d/e/.../viewform" --save profile.json
+   ```
+2. **Run submissions using the profile**:
+   ```bash
+   python main.py --load profile.json --times 100 --concurrency 50
+   ```
 
-| Clear Selection Option | `<div>Required</div>` Tag Present | Question Type |
-| :--------------------: | :-------------------:             | :-----------: |
-| Yes                    | Yes                               | Not Possible  |
-| Yes                    | No                                | MCQ           |
-| No                     | Yes                               | Checkbox      |
-| No                     | No                                | Open-Ended    |
+---
 
-**Note: The `<div>Required</div>` is not the same as `<span aria-label="Required question"></span>`. The prior is a tag unique to Checkbox questions.**
-
-We throw an exception when it is not the question type, to fall to the `except` clause.
-
-```py
-_id = _soup.find("input").attrs["name"].replace("_sentinel", "")
-all_spans = _soup.find_all("span")
-required_question = _soup.find("span", {"aria-label": "Required question"})
-
-if all_spans[-1].contents[0] != "Clear selection" and _soup.find_all("div")[-2].contents[0] == "Required":
-    raise Exception("Should not be an MCQ")
+### Mode C: High-Volume Submissions with Proxies
+Pass a newline-separated list of proxies to rotate IP addresses and avoid `429 Too Many Requests` rate limiting.
+```bash
+python main.py --load profile.json --times 1000 --proxies proxy_list.txt --concurrency 100
 ```
 
-The options for MCQ questions are hidden within `<span>`s. Hence, we can get all the `<spans>`, minus the question `<span>` and other irrelevant `<span>`s and extrapolate the questions.
+#### Success Rate & Performance Evidence
+Upon launching, the client console reports execution stats and success rate progress logs:
 
-```py
-if required_question != None:
-    _required = True
+<p align="center">
+  <img src="images/result1.png" alt="Submission run success rate evidence" width="90%">
+  <br>
+  <em>Figure 2: Success rate evidence showing 12.5% completion over 1,000 attempts under high proxy rotation.</em>
+</p>
 
-    spans = all_spans[1:]
-    for i in range(len(spans) - 2): 
-        _options.append(spans[i + 2].contents[0])
-else:
-    spans = all_spans[1:-1]
-    for i in range(len(spans) - 2): 
-        _options.append(spans[i + 1].contents[0])
+<p align="center">
+  <img src="images/result.png" alt="Execution outcomes success rate evidence" width="90%">
+  <br>
+  <em>Figure 3: Success rate evidence showing 13.9% completion stats and throughput metrics.</em>
+</p>
 
-_type = "Multiple Choice"
-```
+---
 
-**Checkbox Questions**
+#### Google Forms Dashboard Evidence (Submissions Verification)
+The administrative responses panel verifies that the spammer works successfully, writing payloads directly to the Google Form database:
 
-They work similar to MCQ questions. That's literally it.
+<p align="center">
+  <img src="images/form1.png" alt="Form submission evidence" width="80%">
+  <br>
+  <em>Figure 4: Form submission evidence showing 143 out of 145 successful responses recorded for the custom name signature.</em>
+</p>
 
-```py
-_id = _soup.find("input", {"type": "hidden"}).attrs['name'].replace("_sentinel", "")
-required_question = _soup.find("span", {"aria-label": "Required question"})
-all_spans = _soup.find_all("span")
+<p align="center">
+  <img src="images/form2.png" alt="Form grade distribution evidence" width="80%">
+  <br>
+  <em>Figure 5: Form submission evidence showing randomized grade distributions across 399 total responses.</em>
+</p>
 
-if required_question != None:
-    _required = True
+<p align="center">
+  <img src="images/form2.1.png" alt="Form response missed questions evidence" width="80%">
+  <br>
+  <em>Figure 6: Form submission evidence showing answer distribution logs for frequently wrong answer.</em>
+</p>
 
-    spans = all_spans[1:]
-    for i in range(len(spans) - 1): 
-        _options.append(spans[i + 1].contents[0])
-else:
-    spans = all_spans[1:]
-    for i in range(len(spans)): 
-        _options.append(spans[i].contents[0])
+---
 
-_type = "Checkbox"
-```
+## 🎲 Dynamic Option Pools Syntax
 
-**Open-Ended Questions**
+Inject randomization into form submissions using the `pool:` syntax when prompting or editing profiles:
 
-To find the id of an open-ended question is a little harder. It is located withinan (incomplete) array in a `<div>` with a `data-params` tag. Since we can't parse the array, we have to split the string by the `[` character. We have to manually find the position of the id, then append `"entry."` to the front.
+| Question Type | Syntax Format | Execution Result |
+| :--- | :--- | :--- |
+| **Short Text / Paragraph** | `pool:Awesome!\|Excellent\|Very good` | Rotates randomly between these three options. |
+| **Multiple Choice / Dropdown** | `pool:all` | Picks any random choice from the form's native choices. |
+| **Multiple Choice / Dropdown** | `pool:Option A\|Option C` | Restricts choice rotation specifically to Option A or Option C. |
+| **Checkboxes (Multi-select)** | `pool:all` | Selects one or more random options. |
+| **Checkboxes (Multi-select)** | `pool:Opt A,Opt B\|Opt C` | Alternates between submitting (Opt A + Opt B) or just (Opt C). |
+| **Scale / Star Ratings** | `pool:1\|3\|5` | Selects rating values 1, 3, or 5. |
+| **Date & Time Fields** | `YYYY-MM-DD` / `HH:MM` | Formatted static inputs (e.g. `2026-07-02` or `14:30`). |
 
-```py
-_id = "entry." + _soup.find(lambda div: div.name == "div" and "data-params" in div.attrs, {}).attrs['data-params'].split('[')[3].replace(",", "")
+---
 
-if _soup.find("span", {"aria-label": "Required question"}) != None:
-    _required = True
+## 🧩 Answer Profiles (`profile.json`) Deep Dive
 
-_type = "Open Ended"
-```
+When you save a profile using `--save <file>`, a structured JSON representation of the form is exported. Below is an example detailing text entries, checkboxes, dropdowns, and security signatures:
 
-We then add the data to a global dictionary, with the question id as keys.
-
-```py
-question_dictionary[_id] = {
-    "Question": _question,
-    "Type": _type,
-    "Options": _options,
-    "Required": _required
+```json
+{
+  "url": "https://docs.google.com/forms/d/e/1FAIpQLSe9wGlMsp0cb67EbhPhogKYIigUYiy6tgwX8kWIrCI4-kuIXQ/viewform",
+  "answers": {
+    "entry.668699418": "Submitter Text",
+    "entry.1378462663": [
+      "The laws that protect inventions and literary works",
+      "A set of standards that we must follow when we are online"
+    ],
+    "entry.1653704751": [
+      ["Cyber Security"],
+      ["Netiquette"]
+    ],
+    "entry.1654288663": "Patent",
+    "entry.1392604932": "5"
+  },
+  "randomize": {
+    "entry.668699418": false,
+    "entry.1378462663": true,
+    "entry.1653704751": true,
+    "entry.1654288663": false,
+    "entry.1392604932": false
+  },
+  "type_codes": {
+    "entry.668699418": 0,
+    "entry.1378462663": 2,
+    "entry.1653704751": 4,
+    "entry.1654288663": 3,
+    "entry.1392604932": 5
+  },
+  "meta": {
+    "fbzx": "-5693751389381057521",
+    "page_history": "0,1",
+    "partial_response": "[null,null,\"-5693751389381057521\"]"
+  }
 }
 ```
 
-### Getting the answers
-We loop through the `question_dictionary` and based on the question type, ask certain questions and get certain answers. We add the answer into a global dictionary, with the key as the id and value as the answer.
+### Profile Field Structure:
+* **`url`**: The canonical Google Forms URL.
+* **`answers`**: Maps question IDs to answers (single values or list arrays for pools/checkboxes).
+* **`randomize`**: Booleans toggling whether the engine selects randomly from the answer array.
+* **`type_codes`**: Internal Google Form integer mapping representing field formats (ensuring fields like dates, times, and select grids encode correctly).
+* **`meta`**: Tokens dynamically extracted from the page HTML context to build valid POST headers (`fbzx`, `pageHistory`, `partialResponse`).
 
-```py
-answers[_id] = answer
+---
+
+## 🌐 Proxy Configuration & Connection Failovers
+
+The proxy loader supports lists of SOCKS4, SOCKS5, HTTP, and HTTPS proxies.
+
+### Formatting (One proxy per line):
+```text
+# Standard HTTP Proxy
+http://102.34.56.78:8080
+
+# SOCKS5 Proxy with user authentication
+socks5://username:password@12.34.56.78:1080
+
+# SOCKS4 Proxy without authentication
+socks4://98.76.54.32:1080
+
+# Bare host (defaults to HTTP)
+111.22.33.44:3128
 ```
 
-### Sending the requests
-I've found that splitting the requests into sets of 10 is a good balance between speed and reliability. Hence, we create a thread array, then load the threads in. We have a function called `do_request` that does POST requests to the Google Forms endpoint, which is in the format of `https://docs.google.com/forms/u/0/d/e/FORMID/formResponse`. Then, we start each thread and we're done.
+### Scraping & Submitting Resiliency:
+1. **Initial Scraping Redundancy**: If Google blocks your direct IP during the setup scrape phase, the script automatically cycles through loaded HTTP proxies up to 10 times to secure form configurations.
+2. **IP Rotation**: Workers select a random proxy from the loaded list for every individual submission, distributing load evenly across IPs.
+3. **SSL Handling**: Custom SSL handshakes are disabled to avoid client certificate negotiation failures when routing through public proxies.
 
-```py
-successful_requests = 0
-def do_request(times: int, url, data):
-    global successful_requests
-    for i in range(times):
-        response = requests.post(url, data=data)
-        if response.status_code == 200:
-            successful_requests += 1
+---
 
-# Other code
+## ⚙️ Command-Line Arguments
 
-new_url = url.split("/viewform")[0].replace("/d/e", "/u/0/d/e") + "/formResponse"
-start = time.time()
-thread_count = int(times/10)
-threads = []
-for i in range(thread_count - 1):
-    t = threading.Thread(target=do_request, args=(10, new_url, answers,))
-    t.daemon = True
-    threads.append(t)
+| Argument | Description |
+| :--- | :--- |
+| `--url URL` | Directly specifies the Google Form URL. |
+| `--load FILE` | Path to a saved answer profile (`.json`). |
+| `--save FILE` | Saves the mapped questionnaire and answers to a file and exits. |
+| `--times N` | Total number of responses to submit. |
+| `--concurrency N` | Maximum number of concurrent connections (default: `25`). |
+| `--proxies FILE` | Path to a text file containing proxies (one per line). |
+| `--refresh-meta` | Forces refreshing metadata (`fbzx`, `pageHistory`) from the live form. |
+| `--dump-html FILE` | Dumps the parsed form HTML to a file (useful for debugging). |
 
-t = threading.Thread(target=do_request, args=(times % 10, new_url, answers,))
-t.daemon = True
-threads.append(t)
+---
 
-for i in range(len(threads)):
-    print(f"Starting thread {i}")
-    threads[i].start()
-        
-for i in range(len(threads)):
-    threads[i].join()
+## ⚠️ reCAPTCHA Bypass
 
-end = time.time()
-print(ConsoleColor.OKGREEN + f"Complete! Sent {times} requests, ({successful_requests} successful, {times - successful_requests} unsuccessful) in {end - start} seconds.")
-successful_requests = 0
-```
+If the google form has reCAPTCHA verification triggered, submissions might trigger bot defenses. To resolve this:
+
+<p align="center">
+  <img src="images/captcha.png" alt="reCAPTCHA verification challenge" width="55%">
+  <br>
+  <em>Figure 7: Re-captcha redirection challenge indicator.</em>
+</p>
+
+1. **Copy the verification link** provided in the console error log.
+2. **Open the link** in a standard web browser and solve the puzzle.
+3. Once completed, copy the **redirected URL** from your browser's address bar.
+4. Run the script pointing to this **new URL** using the `--url` argument:
+   ```bash
+   python main.py --url "<NEW_COMPLETED_CAPTCHA_URL>" --proxies proxy_list.txt
+   ```
+
+---
+
+## 🐞 Troubleshooting & Limitations
+
+- **CAPTCHA**: Forms using enterprise-grade strict client-side dynamic CAPTCHAs cannot be bypassed without manual solving.
+- **Email Collection**: Forms requiring Google OAuth session login ("Collect email addresses") are not supported as they require browser-signed OAuth credentials.
+- **Direct Fetch Block**: If metadata fetching fails on start, run the script with a proxy list (`--proxies`) to scrape the form structure.
+- **Structure Changes**: If a multi-page form is edited by the creator, load the profile with `--refresh-meta` to update security signatures.
+
+---
+
+## ⚠️ Disclaimer
+
+> [!WARNING]
+> This tool is intended strictly for educational purposes, development testing, and validation of form load capacity. The author is not responsible for any misuse, spam campaigns, or violation of Google Forms Terms of Service. Use responsibly.
