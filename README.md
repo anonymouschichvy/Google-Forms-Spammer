@@ -59,15 +59,28 @@ graph TD
 - **🌪️ Asynchronous Concurrency**: Built with `asyncio` and `aiohttp` to dispatch hundreds of submissions concurrently with rate limits handled via connection pools.
 - **💾 Profile Management**: Build a questionnaire response profile once, save it to a local JSON file (`profile.json`), and reload it for automated execution.
 - **🎲 Dynamic Answer Pools**: Customize response variations using the `pool:option1|option2` syntax to rotate inputs and make submissions look organic.
-- **📋 Wide Compatibility**: Supports multiple input structures:
-  - Short Answer / Paragraph text
-  - Multiple Choice & Dropdowns
-  - Checkboxes (Multi-select)
-  - Linear Scales & Star Ratings
-  - Dates (`YYYY-MM-DD`) and Times (`HH:MM`)
 - **🛡️ Security token mapping**: Automatically extracts and submits crucial security tokens (`fbzx`, `pageHistory`, `partialResponse`) to bypass basic anti-bot headers.
 - **🌐 Proxy Failover & Rotation**: Supports SOCKS4, SOCKS5, HTTP, and HTTPS proxies with automatic redirection/scraping failover.
 - **🚪 Graceful Interruption**: Catches `Ctrl+C` cleanly, letting active workers finish their current request before summarizing stats.
+
+---
+
+### Question Type Support Matrix
+
+| Question Type (from Image) | Status | Code Mapping | Notes & Input Formats |
+| :--- | :---: | :--- | :--- |
+| **Short answer** | **Supported** | Code `0` (`"Short Answer"`) | Accepts free text or random pool options (e.g., `pool:text1\|text2`). |
+| **Paragraph** | **Supported** | Code `1` (`"Paragraph"`) | Accepts free text or random pool options. |
+| **Multiple choice** | **Supported** | Code `2` (`"Multiple Choice"`) | Matches choices exactly. Supports `pool:all` or specific pools. |
+| **Checkboxes** | **Supported** | Code `4` (`"Checkbox"`) | Supports multi-select via comma-separated options (e.g., `Option A, Option B`). |
+| **Dropdown** | **Supported** | Code `3` (`"Dropdown"`) | Matches choices exactly. |
+| **File upload** | ❌ **Unsupported** | *N/A (Code 11)* | Google Form file uploads require Google user authentication and saving files to Google Drive, which cannot be done via headless, anonymous HTTP POST submissions. |
+| **Linear scale** | **Supported** | Code `5` (`"Linear Scale"`) | Accepts numeric values within the scale range. |
+| **Rating** | **Supported** | Code `18` (`"Star Rating"`) | Accepts numeric values within the rating range. |
+| **Multiple choice grid** | **Supported** | Code `7` (`"MC Grid"`) | Matches options per row. |
+| **Checkbox grid** | **Supported** | Code `13` (`"Checkbox Grid"`) | Supports comma-separated selections per row. |
+| **Date** | **Supported** | Code `9` (`"Date"`) | Expects `YYYY-MM-DD` formatting, processed via [_split_date](file:///c:/Users/Ervin%20Regio/Desktop/MACOSX/Google-Forms-Spammer/main.py#L316-L321). |
+| **Time** | **Supported** | Code `10` (`"Time"`) | Expects `HH:MM` formatting, processed via [_split_time](file:///c:/Users/Ervin%20Regio/Desktop/MACOSX/Google-Forms-Spammer/main.py#L324-L329). |
 
 ---
 
