@@ -312,10 +312,13 @@ If the google form has reCAPTCHA verification triggered, submissions might trigg
 
 ## 🐞 Troubleshooting & Limitations
 
-- **CAPTCHA**: Forms using enterprise-grade strict client-side dynamic CAPTCHAs cannot be bypassed without manual solving.
-- **Email Collection**: Forms requiring Google OAuth session login ("Collect email addresses") are not supported as they require browser-signed OAuth credentials.
-- **Direct Fetch Block**: If metadata fetching fails on start, run the script with a proxy list (`--proxies`) to scrape the form structure.
-- **Structure Changes**: If a multi-page form is edited by the creator, load the profile with `--refresh-meta` to update security signatures.
+- **Low Success Rates / Dead Proxies**: If the tool reports a high failure rate (e.g., 95%+ failed), it is almost always due to dead, offline, or extremely slow proxies in your proxy list. Use the optimized retry logic or swap in a high-quality/private proxy list.
+- **Rate Limiting (HTTP 429)**: Triggering mass requests too quickly from a single IP will cause Google to block requests. Rotate working IPs using a proxy list or decrease concurrency.
+- **reCAPTCHA & Bot Protection**: Google Forms automatically triggers reCAPTCHA challenges if it detects bot-like behavior. Headless HTTP clients cannot solve these; use the manual CAPTCHA bypass method outlined above, or rotate high-reputation proxies.
+- **Stale Security Tokens**: Stale security signatures (`fbzx`, `pageHistory`, `partialResponse`) are rejected by Google's servers. Refresh them regularly using the `--refresh-meta` flag.
+- **Payload Structural Mismatches**: Submitting custom-crafted profiles that have missing field types or misaligned data structures will cause failures. Ensure that check-box sentinels, dates, times, and scale values are formatted correctly.
+- **OAuth / Domain Restrictions**: Forms requiring Google account login or restricted to specific corporate/school domains are not supported as they require browser-signed session cookies.
+- **Direct Fetch Block**: If metadata fetching fails on start, Google might have blocked your direct IP. Run the script with a proxy list (`--proxies`) to successfully scrape the form structure.
 
 ---
 

@@ -401,47 +401,76 @@ async def submit_one(
     proxies: list[str],
     sem: asyncio.Semaphore,
     stop: asyncio.Event,
+    pbar: tqdm,
+    max_retries: int = 5,
 ) -> bool:
     if stop.is_set():
         return False
     async with sem:
-        if stop.is_set():
-            return False
-        proxy = random.choice(proxies) if proxies else None
-        is_socks = proxy and proxy.startswith(("socks4", "socks5"))
-        
-        try:
-            if is_socks:
-                from aiohttp_socks import ProxyConnector
-                connector = ProxyConnector.from_url(proxy, ssl=False)
-                async with aiohttp.ClientSession(connector=connector) as session:
-                    async with session.post(
-                        url,
-                        data=build_formdata(profile),
-                        timeout=aiohttp.ClientTimeout(total=15),
-                        allow_redirects=True,
-                    ) as resp:
-                        if resp.status != 200:
-                            return False
-                        body = await resp.text()
-                        return ("Your response has been recorded" in body) or ("formResponse" in str(resp.url))
-            else:
-                async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False, force_close=True), headers={"User-Agent": UA}) as session:
-                    async with session.post(
-                        url,
-                        data=build_formdata(profile),
-                        proxy=proxy,
-                        timeout=aiohttp.ClientTimeout(total=15),
-                        allow_redirects=True,
-                    ) as resp:
-                        if resp.status != 200:
-                            return False
-                        body = await resp.text()
-                        return ("Your response has been recorded" in body) or ("formResponse" in str(resp.url))
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            return False
+        for attempt in range(1, max_retries + 1):
+            if stop.is_set():
+                return False
+            proxy = random.choice(proxies) if proxies else None
+            is_socks = proxy and proxy.startswith(("socks4", "socks5"))
+            proxy_str = proxy if proxy else "Direct"
+            
+            try:
+                if is_socks:
+                    from aiohttp_socks import ProxyConnector
+                    connector = ProxyConnector.from_url(proxy, ssl=False)
+                    async with aiohttp.ClientSession(connector=connector) as session:
+                        async with session.post(
+                            url,
+                            data=build_formdata(profile),
+                            timeout=aiohttp.ClientTimeout(total=15),
+                            allow_redirects=True,
+                        ) as resp:
+                            if resp.status != 200:
+                                pbar.write(warn(f"[Attempt {attempt}/{max_retries}] {proxy_str} returned status {resp.status}"))
+                                if not proxies:
+                                    return False
+                                continue
+                            body = await resp.text()
+                            success = ("Your response has been recorded" in body) or ("formResponse" in str(resp.url))
+                            if success:
+                                return True
+                            else:
+                                pbar.write(warn(f"[Attempt {attempt}/{max_retries}] {proxy_str} response validation failed"))
+                                if not proxies:
+                                    return False
+                                continue
+                else:
+                    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False, force_close=True), headers={"User-Agent": UA}) as session:
+                        async with session.post(
+                            url,
+                            data=build_formdata(profile),
+                            proxy=proxy,
+                            timeout=aiohttp.ClientTimeout(total=15),
+                            allow_redirects=True,
+                        ) as resp:
+                            if resp.status != 200:
+                                pbar.write(warn(f"[Attempt {attempt}/{max_retries}] {proxy_str} returned status {resp.status}"))
+                                if not proxies:
+                                    return False
+                                continue
+                            body = await resp.text()
+                            success = ("Your response has been recorded" in body) or ("formResponse" in str(resp.url))
+                            if success:
+                                return True
+                            else:
+                                pbar.write(warn(f"[Attempt {attempt}/{max_retries}] {proxy_str} response validation failed"))
+                                if not proxies:
+                                    return False
+                                continue
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                err_name = type(e).__name__
+                pbar.write(warn(f"[Attempt {attempt}/{max_retries}] {proxy_str} failed: {err_name}"))
+                if not proxies:
+                    return False
+                continue
+        return False
 
 
 async def worker(
@@ -453,6 +482,7 @@ async def worker(
     stop: asyncio.Event,
     pbar: tqdm,
     stats: Stats,
+    max_retries: int = 5,
 ) -> None:
     while not stop.is_set():
         try:
@@ -465,7 +495,7 @@ async def worker(
             break
 
         try:
-            result = await submit_one(url, profile, proxies, sem, stop)
+            result = await submit_one(url, profile, proxies, sem, stop, pbar, max_retries)
             if result:
                 stats.successes += 1
             stats.completed += 1
@@ -482,6 +512,7 @@ async def run_submissions(
     concurrency: int,
     proxies: list[str],
     stats: Stats,
+    max_retries: int = 5,
 ) -> tuple[int, int, float]:
     submit_url = get_submit_url(profile.url)
     sem = asyncio.Semaphore(concurrency)
@@ -509,7 +540,7 @@ async def run_submissions(
     # Spawn worker tasks
     num_workers = min(concurrency, times)
     workers = [
-        asyncio.create_task(worker(queue, submit_url, profile, proxies, sem, stop, pbar, stats))
+        asyncio.create_task(worker(queue, submit_url, profile, proxies, sem, stop, pbar, stats, max_retries))
         for _ in range(num_workers)
     ]
 
@@ -592,6 +623,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--times", type=int)
     p.add_argument("--concurrency", type=int, default=25)
     p.add_argument("--proxies", help="Path to newline-separated proxy list")
+    p.add_argument("--max-retries", type=int, default=5,
+                   help="Max proxy retries per submission (default: 5)")
     p.add_argument("--dump-html", help="Dump raw form HTML for debugging")
     p.add_argument("--refresh-meta", action="store_true",
                    help="When using --load, re-fetch fbzx/pageHistory from the live form")
@@ -693,7 +726,7 @@ def main() -> None:
     start_time = time.time()
     try:
         successes, completed, elapsed = asyncio.run(
-            run_submissions(profile, times, args.concurrency, proxies, stats)
+            run_submissions(profile, times, args.concurrency, proxies, stats, args.max_retries)
         )
     except KeyboardInterrupt:
         elapsed = time.time() - start_time
